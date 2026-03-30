@@ -1,0 +1,184 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.32.2'
+
+jobs:
+  # ─── Android APK ─────────────────────────────────────
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      # Decode keystore from secrets
+      - name: Decode keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+
+      - name: Create key.properties
+        run: |
+          cat > android/key.properties << 'PROPS'
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=release.keystore
+          PROPS
+
+      - run: flutter pub get
+      - run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+  # ─── Linux AppImage ──────────────────────────────────
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+
+      - run: flutter pub get
+      - run: flutter build linux --release
+
+      # Package as AppImage
+      - name: Create AppImage
+        run: |
+          # Install appimagetool
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+
+          # Create AppDir structure
+          mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/256x256/apps
+          cp -r build/linux/x64/release/bundle/* AppDir/usr/bin/
+
+          # Desktop entry
+          cat > AppDir/claude-remote.desktop << 'DESKTOP'
+          [Desktop Entry]
+          Name=Claude Remote
+          Exec=claude_remote
+          Icon=claude-remote
+          Type=Application
+          Categories=Development;
+          DESKTOP
+          cp AppDir/claude-remote.desktop AppDir/usr/share/applications/claude-remote.desktop
+
+          # AppRun
+          cat > AppDir/AppRun << 'APPRUN'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          exec "$HERE/usr/bin/claude_remote" "$@"
+          APPRUN
+          chmod +x AppDir/AppRun
+
+          # Placeholder icon (CI won't have a real icon)
+          convert -size 256x256 xc:transparent AppDir/usr/share/icons/hicolor/256x256/apps/claude-remote.png 2>/dev/null || touch AppDir/claude-remote.png
+
+          ARCH=x86_64 ./appimagetool AppDir Claude-Remote-x86_64.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: Claude-Remote-x86_64.AppImage
+
+  # ─── macOS (ad-hoc signed) ───────────────────────────
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - run: flutter pub get
+      - run: flutter build macos --release
+
+      # Ad-hoc sign (no Apple Developer account needed)
+      - name: Ad-hoc codesign
+        run: codesign --force --deep --sign - build/macos/Build/Products/Release/claude_remote.app
+
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "Claude Remote" \
+            -srcfolder build/macos/Build/Products/Release/claude_remote.app \
+            -ov -format UDZO \
+            Claude-Remote-macOS.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: Claude-Remote-macOS.dmg
+
+  # ─── iOS (ad-hoc signed, no Developer account) ───────
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - run: flutter pub get
+
+      # Build unsigned xcarchive, then export
+      - name: Build iOS (no codesign)
+        run: |
+          flutter build ios --release --no-codesign
+
+      # Package the .app into an IPA (unsigned, sideload only)
+      - name: Create IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r Claude-Remote-iOS-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: Claude-Remote-iOS-unsigned.ipa
+
+  # ─── Create GitHub Release ───────────────────────────
+  release:
+    needs: [android, linux, macos, ios]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            app-release.apk
+            Claude-Remote-x86_64.AppImage
+            Claude-Remote-macOS.dmg
+            Claude-Remote-iOS-unsigned.ipa
