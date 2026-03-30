@@ -160,33 +160,29 @@ class _UserText extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 16, bottom: 4),
+      padding: const EdgeInsets.only(top: 20, bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.person, size: 16, color: theme.colorScheme.primary),
-              const SizedBox(width: 6),
-              Text(
-                'You',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-            ],
+          Text(
+            'You',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+              color: theme.colorScheme.primary,
+            ),
           ),
           const SizedBox(height: 6),
           SelectableText(
             block.text,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
               color: theme.colorScheme.onSurface,
+              height: 1.5,
             ),
           ),
-          const Divider(height: 20),
         ],
       ),
     );
@@ -203,43 +199,22 @@ class _AssistantText extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.smart_toy_outlined,
-                  size: 16, color: theme.colorScheme.secondary),
-              const SizedBox(width: 6),
-              Text(
-                'Claude',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.secondary,
-                ),
-              ),
-            ],
+      padding: const EdgeInsets.only(top: 12, bottom: 4),
+      child: MarkdownBody(
+        data: block.text,
+        selectable: true,
+        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+          p: theme.textTheme.bodyMedium?.copyWith(height: 1.6),
+          code: theme.textTheme.bodySmall?.copyWith(
+            fontFamily: 'monospace',
+            backgroundColor: theme.colorScheme.surfaceContainerHighest,
           ),
-          const SizedBox(height: 6),
-          MarkdownBody(
-            data: block.text,
-            selectable: true,
-            styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-              p: theme.textTheme.bodyMedium,
-              code: theme.textTheme.bodySmall?.copyWith(
-                fontFamily: 'monospace',
-                backgroundColor: theme.colorScheme.surfaceContainerHighest,
-              ),
-              codeblockDecoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              codeblockPadding: const EdgeInsets.all(12),
-            ),
+          codeblockDecoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(6),
           ),
-        ],
+          codeblockPadding: const EdgeInsets.all(12),
+        ),
       ),
     );
   }
@@ -254,63 +229,34 @@ class _ToolUseRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final onSurface = theme.colorScheme.onSurface;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: theme.colorScheme.primaryContainer,
-            width: 0.5,
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Text.rich(
+        TextSpan(children: [
+          TextSpan(
+            text: '${block.toolName}',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: onSurface.withValues(alpha: 0.7),
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            Icon(_toolIcon(block.toolName ?? ''),
-                size: 15, color: theme.colorScheme.primary),
-            const SizedBox(width: 8),
-            Text(
-              block.toolName ?? '',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.primary,
-              ),
+          TextSpan(
+            text: '  ${block.text}',
+            style: TextStyle(
+              fontSize: 13,
+              fontFamily: 'monospace',
+              color: onSurface.withValues(alpha: 0.45),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                block.text,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ]),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
-
-  IconData _toolIcon(String name) => switch (name) {
-        'Bash' => Icons.terminal,
-        'Edit' || 'Write' => Icons.edit_document,
-        'Read' => Icons.description,
-        'Glob' || 'Grep' => Icons.search,
-        'Agent' => Icons.smart_toy,
-        'WebFetch' || 'WebSearch' => Icons.language,
-        'TaskCreate' || 'TaskUpdate' || 'TaskGet' || 'TaskList' =>
-          Icons.checklist,
-        'ToolSearch' => Icons.build_circle,
-        _ => Icons.extension,
-      };
 }
 
 // ─── Tool result (collapsible) ────────────────────────────
@@ -329,54 +275,58 @@ class _ToolResultRowState extends State<_ToolResultRow> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final preview = widget.block.text.length > 100
-        ? '${widget.block.text.substring(0, 100)}...'
+    final onSurface = theme.colorScheme.onSurface;
+    final preview = widget.block.text.length > 80
+        ? '${widget.block.text.substring(0, 80)}...'
         : widget.block.text;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: GestureDetector(
         onTap: () => setState(() => _expanded = !_expanded),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.output,
-                      size: 14, color: theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 6),
-                  Text('输出',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      )),
-                  const Spacer(),
-                  Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 16,
-                    color: theme.colorScheme.onSurfaceVariant,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  _expanded ? '- output' : '+ output',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: onSurface.withValues(alpha: 0.4),
                   ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _expanded ? widget.block.text : preview,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+            if (_expanded)
+              Padding(
+                padding: const EdgeInsets.only(left: 12, top: 4),
+                child: SelectableText(
+                  widget.block.text,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    color: onSurface.withValues(alpha: 0.5),
+                    height: 1.4,
+                  ),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Text(
+                  preview,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    color: onSurface.withValues(alpha: 0.35),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -398,52 +348,37 @@ class _ThinkingRowState extends State<_ThinkingRow> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: GestureDetector(
         onTap: () => setState(() => _expanded = !_expanded),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.psychology,
-                      size: 14, color: theme.colorScheme.tertiary),
-                  const SizedBox(width: 6),
-                  Text('思考过程',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.tertiary,
-                      )),
-                  const Spacer(),
-                  Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 16,
-                    color: theme.colorScheme.tertiary,
-                  ),
-                ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _expanded ? '- thinking' : '+ thinking',
+              style: TextStyle(
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+                fontWeight: FontWeight.w500,
+                color: onSurface.withValues(alpha: 0.35),
               ),
-              if (_expanded) ...[
-                const SizedBox(height: 6),
-                SelectableText(
+            ),
+            if (_expanded)
+              Padding(
+                padding: const EdgeInsets.only(left: 12, top: 4),
+                child: SelectableText(
                   widget.block.text,
                   style: TextStyle(
                     fontSize: 12,
-                    color: theme.colorScheme.onSurfaceVariant,
+                    color: onSurface.withValues(alpha: 0.45),
+                    height: 1.4,
                   ),
                 ),
-              ],
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
