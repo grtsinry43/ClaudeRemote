@@ -69,35 +69,33 @@ jobs:
       # Package as AppImage
       - name: Create AppImage
         run: |
-          # Install appimagetool
           wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
           chmod +x appimagetool
 
-          # Create AppDir structure
-          mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/256x256/apps
+          mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/256x256/apps AppDir/usr/share/applications
           cp -r build/linux/x64/release/bundle/* AppDir/usr/bin/
 
-          # Desktop entry
-          cat > AppDir/claude-remote.desktop << 'DESKTOP'
+          cat > AppDir/claude-remote.desktop <<'EOF'
           [Desktop Entry]
           Name=Claude Remote
           Exec=claude_remote
           Icon=claude-remote
           Type=Application
           Categories=Development;
-          DESKTOP
-          cp AppDir/claude-remote.desktop AppDir/usr/share/applications/claude-remote.desktop
+          EOF
+          sed -i 's/^          //' AppDir/claude-remote.desktop
+          cp AppDir/claude-remote.desktop AppDir/usr/share/applications/
 
-          # AppRun
-          cat > AppDir/AppRun << 'APPRUN'
+          cat > AppDir/AppRun <<'EOF'
           #!/bin/bash
           HERE="$(dirname "$(readlink -f "${0}")")"
           exec "$HERE/usr/bin/claude_remote" "$@"
-          APPRUN
+          EOF
+          sed -i 's/^          //' AppDir/AppRun
           chmod +x AppDir/AppRun
 
-          # Placeholder icon (CI won't have a real icon)
-          convert -size 256x256 xc:transparent AppDir/usr/share/icons/hicolor/256x256/apps/claude-remote.png 2>/dev/null || touch AppDir/claude-remote.png
+          touch AppDir/usr/share/icons/hicolor/256x256/apps/claude-remote.png
+          touch AppDir/claude-remote.png
 
           ARCH=x86_64 ./appimagetool AppDir Claude-Remote-x86_64.AppImage
 

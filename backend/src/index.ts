@@ -5,12 +5,32 @@ import { SessionManager } from './session-manager.js';
 import { FileWatcher } from './file-watcher.js';
 import type { WsMessage } from './types.js';
 
-const server = Fastify({ logger: true });
+const isProduction = process.env['NODE_ENV'] === 'production';
+
+const server = Fastify({
+  logger: {
+    transport: { target: 'pino-pretty', options: { colorize: true } },
+  },
+});
 const manager = new SessionManager();
 
 const AUTH_SECRET = process.env['AUTH_SECRET'];
+
 if (!AUTH_SECRET) {
-  server.log.warn('AUTH_SECRET not set — running without authentication (local dev only)');
+  const banner = [
+    '',
+    '  AUTH_SECRET is not set!',
+    '  Anyone on your network can access this server.',
+    '  Set AUTH_SECRET env var to enable authentication.',
+    '',
+  ];
+  if (isProduction) {
+    banner.forEach((line) => server.log.fatal(`\x1b[41m\x1b[37m${line.padEnd(56)}\x1b[0m`));
+    server.log.fatal('\x1b[41m\x1b[37m  Refusing to start without authentication.              \x1b[0m');
+    process.exit(1);
+  } else {
+    banner.forEach((line) => server.log.warn(`\x1b[41m\x1b[37m${line.padEnd(56)}\x1b[0m`));
+  }
 }
 
 // ─── CORS ──────────────────────────────────────────────
