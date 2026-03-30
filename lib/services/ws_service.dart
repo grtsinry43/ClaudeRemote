@@ -19,8 +19,9 @@ class WsService {
   Stream<WsEvent> get events => _eventController.stream;
   Stream<bool> get connectionState => _connectionController.stream;
 
-  void updateUrl(String httpUrl) {
-    _wsUrl = '${httpUrl.replaceFirst('http', 'ws').replaceFirst(RegExp(r'/$'), '')}/ws';
+  void updateUrl(String httpUrl, {String token = ''}) {
+    final base = '${httpUrl.replaceFirst('http', 'ws').replaceFirst(RegExp(r'/$'), '')}/ws';
+    _wsUrl = token.isNotEmpty ? '$base?token=$token' : base;
   }
 
   void connect() {

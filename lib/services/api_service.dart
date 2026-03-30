@@ -16,9 +16,14 @@ class ApiService {
 
   String get baseUrl => _baseUrl;
 
-  void updateBaseUrl(String url) {
+  void updateBaseUrl(String url, {String token = ''}) {
     _baseUrl = url;
     _dio.options.baseUrl = url;
+    if (token.isNotEmpty) {
+      _dio.options.headers['Authorization'] = 'Bearer $token';
+    } else {
+      _dio.options.headers.remove('Authorization');
+    }
   }
 
   // ─── Health ─────────────────────────────────────────

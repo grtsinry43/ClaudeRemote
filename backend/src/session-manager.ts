@@ -66,7 +66,9 @@ export class SessionManager {
     options: { sessionId?: string; cwd?: string },
   ): Promise<void> {
     const abortController = new AbortController();
-    let resolvedSessionId = options.sessionId ?? 'pending';
+    // Use the provided sessionId or generate a local tracking UUID
+    const trackingId = options.sessionId ?? randomUUID();
+    let resolvedSessionId = trackingId;
 
     // When resuming, look up the session's original cwd
     let cwd = options.cwd ?? process.cwd();
@@ -101,12 +103,11 @@ export class SessionManager {
       return this.requestApproval(resolvedSessionId, toolName, input);
     };
 
-    if (options.sessionId) {
-      this.activeQueries.set(options.sessionId, {
-        sessionId: options.sessionId,
-        abortController,
-      });
-    }
+    // Register the tracking entry immediately so it's always trackable
+    this.activeQueries.set(trackingId, {
+      sessionId: trackingId,
+      abortController,
+    });
 
     this.emit(resolvedSessionId, 'status_update', {
       sessionId: resolvedSessionId,
@@ -123,11 +124,16 @@ export class SessionManager {
         // Init message — capture session ID
         if (message.type === 'system' && 'subtype' in message && message.subtype === 'init') {
           const initMsg = message as { session_id: string; [key: string]: unknown };
-          resolvedSessionId = initMsg.session_id;
-          this.activeQueries.set(resolvedSessionId, {
-            sessionId: resolvedSessionId,
-            abortController,
-          });
+          const realSessionId = initMsg.session_id;
+          // Swap the tracking key from the temporary UUID to the real session ID
+          if (realSessionId !== trackingId) {
+            this.activeQueries.delete(trackingId);
+            this.activeQueries.set(realSessionId, {
+              sessionId: realSessionId,
+              abortController,
+            });
+          }
+          resolvedSessionId = realSessionId;
           this.emit(resolvedSessionId, 'session_init', {
             sessionId: resolvedSessionId,
           });
@@ -169,10 +175,11 @@ export class SessionManager {
         this.emit(resolvedSessionId, 'error', {
           sessionId: resolvedSessionId,
           error: error.message,
-          stack: error.stack,
         });
       }
     } finally {
+      // Clean up both the tracking key and the resolved key
+      this.activeQueries.delete(trackingId);
       this.activeQueries.delete(resolvedSessionId);
       this.emit(resolvedSessionId, 'status_update', {
         sessionId: resolvedSessionId,
@@ -269,6 +276,19 @@ export class SessionManager {
   stopSession(sessionId: string): boolean {
     const active = this.activeQueries.get(sessionId);
     if (!active) return false;
+
+    // Reject any pending approvals for this session before aborting
+    for (const [id, approval] of this.approvals) {
+      if (approval.sessionId === sessionId && approval.status === 'pending') {
+        approval.status = 'denied';
+        approval.resolver.resolve({
+          behavior: 'deny',
+          message: 'Session stopped',
+        });
+        this.approvals.delete(id);
+      }
+    }
+
     active.abortController.abort();
     return true;
   }

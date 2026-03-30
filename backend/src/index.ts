@@ -8,8 +8,47 @@ import type { WsMessage } from './types.js';
 const server = Fastify({ logger: true });
 const manager = new SessionManager();
 
-await server.register(cors, { origin: true });
+const AUTH_SECRET = process.env['AUTH_SECRET'];
+if (!AUTH_SECRET) {
+  server.log.warn('AUTH_SECRET not set — running without authentication (local dev only)');
+}
+
+// ─── CORS ──────────────────────────────────────────────
+const allowedOriginsEnv = process.env['ALLOWED_ORIGINS'];
+let corsOrigin: boolean | string[];
+if (allowedOriginsEnv) {
+  corsOrigin = allowedOriginsEnv.split(',').map((o) => o.trim());
+} else if (AUTH_SECRET) {
+  corsOrigin = false;
+} else {
+  corsOrigin = true;
+}
+
+await server.register(cors, { origin: corsOrigin });
 await server.register(websocket);
+
+// ─── Auth middleware ───────────────────────────────────
+if (AUTH_SECRET) {
+  server.addHook('onRequest', async (req, reply) => {
+    // Skip auth for health check
+    if (req.url === '/api/health') return;
+    // Skip WebSocket — handled separately in the WS handler
+    if (req.headers.upgrade?.toLowerCase() === 'websocket') return;
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || authHeader !== `Bearer ${AUTH_SECRET}`) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+  });
+}
+
+// ─── Helpers ───────────────────────────────────────────
+function parsePositiveInt(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const n = parseInt(value, 10);
+  if (Number.isNaN(n) || n < 0) return undefined;
+  return n;
+}
 
 // ─── REST API ───────────────────────────────────────────
 
@@ -33,8 +72,8 @@ server.get<{
 }>('/api/sessions/:id/messages', async (req) => {
   return manager.getMessages(req.params.id, {
     dir: req.query.dir,
-    limit: req.query.limit ? parseInt(req.query.limit, 10) : undefined,
-    offset: req.query.offset ? parseInt(req.query.offset, 10) : undefined,
+    limit: parsePositiveInt(req.query.limit),
+    offset: parsePositiveInt(req.query.offset),
   });
 });
 
@@ -77,12 +116,24 @@ server.post<{
 const wsClients = new Set<import('ws').WebSocket>();
 
 server.register(async (app) => {
-  app.get('/ws', { websocket: true }, (socket) => {
+  app.get('/ws', { websocket: true }, (socket, req) => {
+    // WebSocket authentication via query param
+    if (AUTH_SECRET) {
+      const url = new URL(req.url ?? '', `http://${req.headers.host}`);
+      const token = url.searchParams.get('token');
+      if (token !== AUTH_SECRET) {
+        socket.close(4001, 'Unauthorized');
+        return;
+      }
+    }
+
     wsClients.add(socket);
 
     const unsubscribe = manager.subscribe('*', (event, data) => {
-      const msg: WsMessage = { type: event as WsMessage['type'], data };
-      socket.send(JSON.stringify(msg));
+      if (socket.readyState === 1) {
+        const msg: WsMessage = { type: event as WsMessage['type'], data };
+        socket.send(JSON.stringify(msg));
+      }
     });
 
     socket.on('message', (raw: Buffer) => {
@@ -95,7 +146,15 @@ server.register(async (app) => {
             sessionId?: string;
             cwd?: string;
           };
-          manager.sendMessage(prompt, { sessionId, cwd });
+          manager.sendMessage(prompt, { sessionId, cwd }).catch((err) => {
+            const error = err as Error;
+            if (socket.readyState === 1) {
+              socket.send(JSON.stringify({
+                type: 'error',
+                data: { error: error.message },
+              }));
+            }
+          });
         } else if (msg.type === 'approval_response') {
           const { approvalId, allowed, answers } = msg.data as {
             approvalId: string;
@@ -105,7 +164,9 @@ server.register(async (app) => {
           manager.respondToApproval(approvalId, allowed, answers);
         }
       } catch {
-        socket.send(JSON.stringify({ type: 'error', data: 'Invalid message' }));
+        if (socket.readyState === 1) {
+          socket.send(JSON.stringify({ type: 'error', data: 'Invalid message' }));
+        }
       }
     });
 
@@ -119,6 +180,7 @@ server.register(async (app) => {
 // ─── File Watcher (push session updates on disk changes) ─
 
 function broadcastSessionsUpdate() {
+  if (wsClients.size === 0) return;
   manager.getSessions().then((sessions) => {
     const msg = JSON.stringify({
       type: 'sessions_updated',
@@ -129,7 +191,9 @@ function broadcastSessionsUpdate() {
         client.send(msg);
       }
     }
-  }).catch(() => {});
+  }).catch((err) => {
+    server.log.warn(err, 'broadcast getSessions failed');
+  });
 }
 
 const fileWatcher = new FileWatcher(broadcastSessionsUpdate, 1500);

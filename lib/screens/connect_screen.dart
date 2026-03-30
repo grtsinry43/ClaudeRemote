@@ -12,6 +12,7 @@ class ConnectScreen extends StatefulWidget {
 
 class _ConnectScreenState extends State<ConnectScreen> {
   final _urlController = TextEditingController();
+  final _tokenController = TextEditingController();
   bool _connecting = false;
   String? _error;
 
@@ -20,6 +21,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
     super.initState();
     final provider = context.read<ConnectionProvider>();
     _urlController.text = provider.serverUrl;
+    _tokenController.text = provider.token;
   }
 
   Future<void> _connect() async {
@@ -30,8 +32,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
     final provider = context.read<ConnectionProvider>();
     final url = _urlController.text.trim();
+    final token = _tokenController.text.trim();
 
-    final success = await provider.connect(url);
+    final success = await provider.connect(url, token: token);
 
     if (!mounted) return;
 
@@ -90,6 +93,18 @@ class _ConnectScreenState extends State<ConnectScreen> {
                   keyboardType: TextInputType.url,
                   onSubmitted: (_) => _connect(),
                 ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _tokenController,
+                  decoration: const InputDecoration(
+                    labelText: '认证令牌（可选）',
+                    hintText: 'AUTH_SECRET 的值',
+                    prefixIcon: Icon(Icons.key),
+                    border: OutlineInputBorder(),
+                  ),
+                  obscureText: true,
+                  onSubmitted: (_) => _connect(),
+                ),
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
@@ -119,6 +134,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   @override
   void dispose() {
     _urlController.dispose();
+    _tokenController.dispose();
     super.dispose();
   }
 }

@@ -47,6 +47,14 @@ class SettingsScreen extends StatelessWidget {
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
+                          if (conn.token.isNotEmpty)
+                            Text(
+                              '令牌: ${'*' * 8}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
                         ],
                       ),
                     ),

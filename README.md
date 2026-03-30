@@ -50,6 +50,18 @@ HOST=100.x.x.x PORT=3200 pnpm run dev
 
 > 后端依赖本机已安装的 Claude Code，使用你 CLI 的 OAuth 认证，不需要 API key。
 
+### 1.1 设置认证令牌（推荐）
+
+后端默认无认证，适合本地开发。如果需要通过网络访问（Tailscale、局域网），强烈建议设置 `AUTH_SECRET`：
+
+```bash
+AUTH_SECRET=my-secret-token pnpm run dev
+```
+
+设置后所有 REST 请求需要 `Authorization: Bearer <token>` 头，WebSocket 连接需要 `?token=<token>` 参数。在 Flutter 客户端的连接页填入相同的令牌即可。
+
+不设置 `AUTH_SECRET` 时后端会打印警告并放行所有请求。
+
 ### 2. 运行 Flutter App
 
 ```bash

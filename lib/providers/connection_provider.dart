@@ -10,10 +10,11 @@ class ConnectionProvider extends ChangeNotifier {
 
   bool _isConnected = false;
   String _serverUrl = 'http://localhost:3200';
+  String _token = '';
   StreamSubscription? _wsSub;
 
   ConnectionProvider({required this.api, required this.ws}) {
-    _loadSavedUrl();
+    _loadSaved();
     _wsSub = ws.connectionState.listen((connected) {
       _isConnected = connected;
       notifyListeners();
@@ -22,27 +23,32 @@ class ConnectionProvider extends ChangeNotifier {
 
   bool get isConnected => _isConnected;
   String get serverUrl => _serverUrl;
+  String get token => _token;
 
-  Future<void> _loadSavedUrl() async {
+  Future<void> _loadSaved() async {
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('server_url');
-    if (saved != null) {
-      _serverUrl = saved;
-      api.updateBaseUrl(_serverUrl);
-      ws.updateUrl(_serverUrl);
+    final savedUrl = prefs.getString('server_url');
+    final savedToken = prefs.getString('auth_token');
+    if (savedUrl != null) {
+      _serverUrl = savedUrl;
+      _token = savedToken ?? '';
+      api.updateBaseUrl(_serverUrl, token: _token);
+      ws.updateUrl(_serverUrl, token: _token);
     }
   }
 
-  Future<bool> connect(String url) async {
+  Future<bool> connect(String url, {String token = ''}) async {
     _serverUrl = url;
-    api.updateBaseUrl(url);
-    ws.updateUrl(url);
+    _token = token;
+    api.updateBaseUrl(url, token: token);
+    ws.updateUrl(url, token: token);
 
     final healthy = await api.checkHealth();
     if (healthy) {
       ws.connect();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('server_url', url);
+      await prefs.setString('auth_token', token);
       notifyListeners();
       return true;
     }
